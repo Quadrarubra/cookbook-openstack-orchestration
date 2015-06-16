@@ -98,26 +98,26 @@ end
 shared_examples 'expects to create heat directories' do
   it 'creates /etc/heat' do
     expect(chef_run).to create_directory('/etc/heat').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 
   it 'creates /etc/heat/environment.d' do
     expect(chef_run).to create_directory('/etc/heat/environment.d').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 
   it 'creates /var/cache/heat' do
     expect(chef_run).to create_directory('/var/cache/heat').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 end
 
@@ -404,6 +404,17 @@ shared_examples 'expects to create heat conf' do
         node.set['openstack']['mq']['orchestration']['service_type'] = 'rabbitmq'
       end
 
+      it 'has default rabbit values' do
+        [/^rpc_conn_pool_size=30$/,
+         /^amqp_durable_queues=false$/,
+         /^amqp_auto_delete=false$/,
+         /^heartbeat_timeout_threshold=0$/,
+         /^heartbeat_rate=2$/
+        ].each do |line|
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
+      end
+
       it 'does not have rabbit ha values' do
         [
           /^rabbit_host=127.0.0.1$/,
@@ -433,6 +444,14 @@ shared_examples 'expects to create heat conf' do
         node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_version'] = 'TLSv1.2'
 
         expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^kombu_ssl_version=TLSv1.2$/)
+      end
+
+      it 'has the default rabbit_retry_interval set' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^rabbit_retry_interval=1$/)
+      end
+
+      it 'has the default rabbit_max_retries set' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^rabbit_max_retries=0$/)
       end
     end
   end
