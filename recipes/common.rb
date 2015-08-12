@@ -63,12 +63,14 @@ heat_api_cloudwatch_bind = internal_endpoint 'orchestration-api-cloudwatch-bind'
 heat_api_cloudwatch_endpoint = internal_endpoint 'orchestration-api-cloudwatch'
 
 service_pass = get_password 'service', 'openstack-orchestration'
+auth_encryption_key = get_password 'token', 'orchestration_auth_encryption_key'
 
 stack_domain_admin_password = nil
 if node['openstack']['orchestration']['stack_domain_admin']
   stack_domain_admin_password = get_password 'user', node['openstack']['orchestration']['stack_domain_admin']
 end
 
+ec2_auth_uri = auth_uri_transform identity_endpoint.to_s, node['openstack']['orchestration']['ec2authtoken']['auth']['version']
 auth_uri = auth_uri_transform identity_endpoint.to_s, node['openstack']['orchestration']['api']['auth']['version']
 identity_uri = identity_uri_transform(identity_admin_endpoint)
 
@@ -113,9 +115,11 @@ template '/etc/heat/heat.conf' do
     mq_service_type: mq_service_type,
     mq_password: mq_password,
     rabbit_hosts: rabbit_hosts,
+    ec2_auth_uri: ec2_auth_uri,
     auth_uri: auth_uri,
     identity_uri: identity_uri,
     service_pass: service_pass,
+    auth_encryption_key: auth_encryption_key,
     sql_connection: sql_connection,
     heat_api_bind: heat_api_bind,
     heat_api_endpoint: heat_api_endpoint,

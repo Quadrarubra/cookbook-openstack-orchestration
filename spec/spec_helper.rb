@@ -30,8 +30,8 @@ shared_context 'orchestration_stubs' do
     allow_any_instance_of(Chef::Recipe).to receive(:address_for)
       .with('lo')
       .and_return '127.0.1.1'
-    allow_any_instance_of(Chef::Recipe).to receive(:get_secret)
-      .with('openstack_identity_bootstrap_token')
+    allow_any_instance_of(Chef::Recipe).to receive(:get_password)
+      .with('token', 'openstack_identity_bootstrap_token')
       .and_return 'bootstrap-token'
 
     allow_any_instance_of(Chef::Recipe).to receive(:get_password)
@@ -55,6 +55,9 @@ shared_context 'orchestration_stubs' do
     allow_any_instance_of(Chef::Recipe).to receive(:get_password)
       .with('user', 'admin')
       .and_return 'admin_pass'
+    allow_any_instance_of(Chef::Recipe).to receive(:get_password)
+      .with('token', 'orchestration_auth_encryption_key')
+      .and_return 'auth_encryption_key_secret'
     allow(Chef::Application).to receive(:fatal!)
   end
 end
@@ -78,8 +81,8 @@ shared_examples 'expect runs openstack common logging recipe' do
 end
 
 shared_examples 'expect installs common heat package' do
-  it 'installs the openstack-heat package' do
-    expect(chef_run).to upgrade_package 'openstack-heat'
+  it 'installs the openstack-heat common package' do
+    expect(chef_run).to upgrade_package 'openstack-heat-common'
   end
 end
 
@@ -195,6 +198,10 @@ shared_examples 'expects to create heat conf' do
       expect(chef_run).to render_file(file.name).with_content(/^insecure=false$/)
     end
 
+    it 'sets auth_encryption_key' do
+      expect(chef_run).to render_config_file(file.name).with_section_content('DEFAULT', /^auth_encryption_key=auth_encryption_key_secret$/)
+    end
+
     describe 'default values for certificates files' do
       it 'has no such values' do
         [
@@ -298,7 +305,7 @@ shared_examples 'expects to create heat conf' do
     describe 'default values' do
       it 'has default conf values' do
         [
-          %r{^sql_connection=mysql://heat:heat@127.0.0.1:3306/heat\?charset=utf8$},
+          %r{^connection=mysql://heat:heat@127.0.0.1:3306/heat\?charset=utf8$},
           %r{^heat_metadata_server_url=http://127.0.0.1:8000$},
           %r{^heat_waitcondition_server_url=http://127.0.0.1:8000/v1/waitcondition$},
           %r{^heat_watch_server_url=http://127.0.0.1:8003$},
@@ -399,6 +406,12 @@ shared_examples 'expects to create heat conf' do
       end
     end
 
+    describe 'has ec2authtoken values' do
+      it 'has default ec2authtoken values' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('ec2authtoken', %r{^auth_uri=http://127.0.0.1:5000/v2.0$})
+      end
+    end
+
     describe 'has rabbit values' do
       before do
         node.set['openstack']['mq']['orchestration']['service_type'] = 'rabbitmq'
@@ -435,15 +448,35 @@ shared_examples 'expects to create heat conf' do
         end
       end
 
-      it 'does not have kombu ssl version set' do
-        expect(chef_run).not_to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^kombu_ssl_version=TLSv1.2$/)
+      it 'does not have ssl config set' do
+        [/^rabbit_use_ssl=/,
+         /^kombu_ssl_version=/,
+         /^kombu_ssl_keyfile=/,
+         /^kombu_ssl_certfile=/,
+         /^kombu_ssl_ca_certs=/,
+         /^kombu_reconnect_delay=/,
+         /^kombu_reconnect_timeout=/].each do |line|
+          expect(chef_run).not_to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
       end
 
-      it 'sets kombu ssl version' do
+      it 'sets ssl config' do
         node.set['openstack']['mq']['orchestration']['rabbit']['use_ssl'] = true
         node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_version'] = 'TLSv1.2'
-
-        expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^kombu_ssl_version=TLSv1.2$/)
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_keyfile'] = 'keyfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_certfile'] = 'certfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_ca_certs'] = 'certsfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_reconnect_delay'] = 123.123
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_reconnect_timeout'] = 123
+        [/^rabbit_use_ssl=true/,
+         /^kombu_ssl_version=TLSv1.2$/,
+         /^kombu_ssl_keyfile=keyfile$/,
+         /^kombu_ssl_certfile=certfile$/,
+         /^kombu_ssl_ca_certs=certsfile$/,
+         /^kombu_reconnect_delay=123.123$/,
+         /^kombu_reconnect_timeout=123$/].each do |line|
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
       end
 
       it 'has the default rabbit_retry_interval set' do
