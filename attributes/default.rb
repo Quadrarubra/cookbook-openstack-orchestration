@@ -26,8 +26,18 @@ default['openstack']['orchestration']['custom_template_banner'] = '
 
 default['openstack']['orchestration']['verbose'] = 'False'
 default['openstack']['orchestration']['debug'] = 'False'
+default['openstack']['orchestration']['log_dir'] = '/var/log/heat'
 # This is the name of the Chef role that will install the Keystone Service API
 default['openstack']['orchestration']['identity_service_chef_role'] = 'os-identity'
+
+# Number of heat-engine processes to fork and run.
+default['openstack']['orchestration']['num_engine_workers'] = nil
+# Number of workers for Heat api service.
+default['openstack']['orchestration']['api']['workers'] = 0
+# Number of workers for Heat api cfn service.
+default['openstack']['orchestration']['api_cfn']['workers'] = 0
+# Number of workers for Heat api cloudwatch service.
+default['openstack']['orchestration']['api_cloudwatch']['workers'] = 0
 
 # Gets set in the Heat Endpoint when registering with Keystone
 default['openstack']['orchestration']['region'] = node['openstack']['region']
@@ -38,8 +48,9 @@ default['openstack']['orchestration']['rabbit_server_chef_role'] = 'os-ops-messa
 
 default['openstack']['orchestration']['service_tenant_name'] = 'service'
 default['openstack']['orchestration']['service_user'] = 'heat'
-default['openstack']['orchestration']['service_role'] = 'admin'
+default['openstack']['orchestration']['service_role'] = 'service'
 
+default['openstack']['orchestration']['ec2authtoken']['auth']['version'] = 'v2.0'
 default['openstack']['orchestration']['api']['auth']['version'] = node['openstack']['api']['auth']['version']
 
 # A PEM encoded Certificate Authority to use for clients when verifying HTTPs connections.
@@ -195,15 +206,15 @@ when 'fedora', 'rhel' # :pragma-foodcritic: ~FC024 - won't fix this
   default['openstack']['orchestration']['user'] = 'heat'
   default['openstack']['orchestration']['group'] = 'heat'
   default['openstack']['orchestration']['platform'] = {
-    'heat_common_packages' => ['openstack-heat'],
+    'heat_common_packages' => ['openstack-heat-common'],
     'heat_client_packages' => ['python-heatclient'],
-    'heat_api_packages' => ['python-heatclient'],
+    'heat_api_packages' => ['openstack-heat-api', 'python-heatclient'],
     'heat_api_service' => 'openstack-heat-api',
-    'heat_api_cfn_packages' => ['python-heatclient'],
+    'heat_api_cfn_packages' => ['openstack-heat-api-cfn', 'python-heatclient'],
     'heat_api_cfn_service' => 'openstack-heat-api-cfn',
-    'heat_api_cloudwatch_packages' => ['python-heatclient'],
+    'heat_api_cloudwatch_packages' => ['openstack-heat-api-cloudwatch', 'python-heatclient'],
     'heat_api_cloudwatch_service' => 'openstack-heat-api-cloudwatch',
-    'heat_engine_packages' => [],
+    'heat_engine_packages' => ['openstack-heat-engine'],
     'heat_engine_service' => 'openstack-heat-engine',
     'heat_api_process_name' => 'heat-api',
     'package_overrides' => ''

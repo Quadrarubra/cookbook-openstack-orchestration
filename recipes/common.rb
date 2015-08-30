@@ -63,13 +63,16 @@ heat_api_cloudwatch_bind = internal_endpoint 'orchestration-api-cloudwatch-bind'
 heat_api_cloudwatch_endpoint = internal_endpoint 'orchestration-api-cloudwatch'
 
 service_pass = get_password 'service', 'openstack-orchestration'
+auth_encryption_key = get_password 'token', 'orchestration_auth_encryption_key'
 
 stack_domain_admin_password = nil
 if node['openstack']['orchestration']['stack_domain_admin']
   stack_domain_admin_password = get_password 'user', node['openstack']['orchestration']['stack_domain_admin']
 end
 
+ec2_auth_uri = auth_uri_transform identity_endpoint.to_s, node['openstack']['orchestration']['ec2authtoken']['auth']['version']
 auth_uri = auth_uri_transform identity_endpoint.to_s, node['openstack']['orchestration']['api']['auth']['version']
+identity_uri = identity_uri_transform(identity_admin_endpoint)
 
 mq_service_type = node['openstack']['mq']['orchestration']['service_type']
 
@@ -83,15 +86,15 @@ elsif mq_service_type == 'qpid'
 end
 
 directory '/etc/heat' do
-  group  node['openstack']['orchestration']['group']
-  owner  node['openstack']['orchestration']['user']
+  group node['openstack']['orchestration']['group']
+  owner node['openstack']['orchestration']['user']
   mode 00700
   action :create
 end
 
 directory '/etc/heat/environment.d' do
-  group  node['openstack']['orchestration']['group']
-  owner  node['openstack']['orchestration']['user']
+  group node['openstack']['orchestration']['group']
+  owner node['openstack']['orchestration']['user']
   mode 00700
   action :create
 end
@@ -104,17 +107,19 @@ end
 
 template '/etc/heat/heat.conf' do
   source 'heat.conf.erb'
-  group  node['openstack']['orchestration']['group']
-  owner  node['openstack']['orchestration']['user']
-  mode   00640
+  group node['openstack']['orchestration']['group']
+  owner node['openstack']['orchestration']['user']
+  mode 00640
   variables(
     stack_domain_admin_password: stack_domain_admin_password,
     mq_service_type: mq_service_type,
     mq_password: mq_password,
     rabbit_hosts: rabbit_hosts,
+    ec2_auth_uri: ec2_auth_uri,
     auth_uri: auth_uri,
-    identity_admin_endpoint: identity_admin_endpoint,
+    identity_uri: identity_uri,
     service_pass: service_pass,
+    auth_encryption_key: auth_encryption_key,
     sql_connection: sql_connection,
     heat_api_bind: heat_api_bind,
     heat_api_endpoint: heat_api_endpoint,
@@ -127,9 +132,9 @@ end
 
 template '/etc/heat/environment.d/default.yaml' do
   source 'default.yaml.erb'
-  group  node['openstack']['orchestration']['group']
-  owner  node['openstack']['orchestration']['user']
-  mode   00644
+  group node['openstack']['orchestration']['group']
+  owner node['openstack']['orchestration']['user']
+  mode 00644
 end
 
 execute 'heat-manage db_sync' do

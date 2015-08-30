@@ -3,7 +3,7 @@ Description
 
 This cookbook installs the OpenStack Heat service **Heat** as part of an OpenStack reference deployment Chef for OpenStack.
 
-http://heat.openstack.org/
+https://wiki.openstack.org/wiki/Heat
 
 Requirements
 ============
@@ -60,6 +60,10 @@ Attributes for the Heat service are in the ['openstack']['orchestration'] namesp
 * `openstack['orchestration']['rabbit_server_chef_role']` - The name of the Chef role that knows about the message queue server
 * `openstack['orchestration']['user']` - User heat runs as
 * `openstack['orchestration']['group']` - Group heat runs as
+* `openstack['orchestration']['num_engine_workers']` - Number of heat-engine processes to fork and run.
+* `openstack['orchestration']['api']['workers']` - Number of workers for Heat api service.
+* `openstack['orchestration']['api_cfn']['workers']` - Number of workers for Heat api cfn service.
+* `openstack['orchestration']['api_cloudwatch']['workers']` - Number of workers for Heat api cloudwatch service.
 * `openstack['orchestration']['db']['username']` - Username for heat database access
 * `openstack['orchestration']['api']['adminURL']` - Used when registering heat endpoint with keystone
 * `openstack['orchestration']['api']['internalURL']` - Used when registering heat endpoint with keystone
@@ -194,6 +198,7 @@ Miscellaneous Options
 Arrays whose elements will be copied exactly into the respective config files (contents e.g. ['option1=value1', 'option2=value2']).
 
 * `openstack["orchestration"]["misc_heat"]` - Array of bare options for `heat.conf`.
+* `orchestration_auth_encryption_key` - Key used to encrypt authentication info in the database. Length of this key must be 16, 24 or 32 characters. Comes from secrets databag.
 
 Testing
 =====
@@ -209,6 +214,7 @@ License and Author
 | **Author**           |  Chen Zhiwei (<zhiwchen@cn.ibm.com>)               |
 | **Author**           |  Ionut Artarisi (<iartarisi@suse.cz>)              |
 | **Author**           |  Mark Vanderwiel (<vanderwl@us.ibm.com>)           |
+| **Author**           |  Jan Klare (<j.klare@x-ion.de>)                    |
 |                      |                                                    |
 | **Copyright**        |  Copyright (c) 2013-2014, IBM Corp.                |
 | **Copyright**        |  Copyright (c) 2014, SUSE Linux, GmbH.             |

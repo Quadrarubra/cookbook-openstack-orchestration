@@ -9,7 +9,7 @@ require 'chef/application'
 LOG_LEVEL = :fatal
 REDHAT_OPTS = {
   platform: 'redhat',
-  version: '7.0',
+  version: '7.1',
   log_level: ::LOG_LEVEL
 }
 UBUNTU_OPTS = {
@@ -30,8 +30,8 @@ shared_context 'orchestration_stubs' do
     allow_any_instance_of(Chef::Recipe).to receive(:address_for)
       .with('lo')
       .and_return '127.0.1.1'
-    allow_any_instance_of(Chef::Recipe).to receive(:get_secret)
-      .with('openstack_identity_bootstrap_token')
+    allow_any_instance_of(Chef::Recipe).to receive(:get_password)
+      .with('token', 'openstack_identity_bootstrap_token')
       .and_return 'bootstrap-token'
 
     allow_any_instance_of(Chef::Recipe).to receive(:get_password)
@@ -55,6 +55,9 @@ shared_context 'orchestration_stubs' do
     allow_any_instance_of(Chef::Recipe).to receive(:get_password)
       .with('user', 'admin')
       .and_return 'admin_pass'
+    allow_any_instance_of(Chef::Recipe).to receive(:get_password)
+      .with('token', 'orchestration_auth_encryption_key')
+      .and_return 'auth_encryption_key_secret'
     allow(Chef::Application).to receive(:fatal!)
   end
 end
@@ -77,27 +80,9 @@ shared_examples 'expect runs openstack common logging recipe' do
   end
 end
 
-def expect_creates_api_paste(service, action = :restart) # rubocop:disable MethodLength
-  describe 'api-paste.ini' do
-    let(:template) { chef_run.template('/etc/heat/api-paste.ini') }
-
-    it 'creates the heat.conf file' do
-      expect(chef_run).to create_template(template.name).with(
-        owner: 'heat',
-        group: 'heat',
-        mode: 0644
-      )
-    end
-
-    it 'notifies heat-api restart' do
-      expect(template).to notify(service).to(action)
-    end
-  end
-end
-
 shared_examples 'expect installs common heat package' do
-  it 'installs the openstack-heat package' do
-    expect(chef_run).to upgrade_package 'openstack-heat'
+  it 'installs the openstack-heat common package' do
+    expect(chef_run).to upgrade_package 'openstack-heat-common'
   end
 end
 
@@ -116,26 +101,26 @@ end
 shared_examples 'expects to create heat directories' do
   it 'creates /etc/heat' do
     expect(chef_run).to create_directory('/etc/heat').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 
   it 'creates /etc/heat/environment.d' do
     expect(chef_run).to create_directory('/etc/heat/environment.d').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 
   it 'creates /var/cache/heat' do
     expect(chef_run).to create_directory('/var/cache/heat').with(
-          owner: 'heat',
-          group: 'heat',
-          mode: 0700
-        )
+      owner: 'heat',
+      group: 'heat',
+      mode: 0700
+    )
   end
 end
 
@@ -149,6 +134,27 @@ shared_examples 'expects to create heat conf' do
         group: 'heat',
         mode: 0640
       )
+    end
+
+    describe 'workers' do
+      it 'has default worker values' do
+        [
+          'heat_api',
+          'heat_api_cfn',
+          'heat_api_cloudwatch'
+        ].each do |section|
+          expect(chef_run).to render_config_file(file.name).with_section_content(section, /^workers=0$/)
+        end
+      end
+
+      it 'has engine workers not set by default' do
+        expect(chef_run).not_to render_config_file(file.name).with_section_content('DEFAULT', /^num_engine_workers=/)
+      end
+
+      it 'allows engine workers override' do
+        node.set['openstack']['orchestration']['num_engine_workers'] = 5
+        expect(chef_run).to render_config_file(file.name).with_section_content('DEFAULT', /^num_engine_workers=5$/)
+      end
     end
 
     it 'uses default values for these attributes and they are not set' do
@@ -190,6 +196,10 @@ shared_examples 'expects to create heat conf' do
     it 'sets insecure' do
       node.set['openstack']['orchestration']['api']['auth']['insecure'] = false
       expect(chef_run).to render_file(file.name).with_content(/^insecure=false$/)
+    end
+
+    it 'sets auth_encryption_key' do
+      expect(chef_run).to render_config_file(file.name).with_section_content('DEFAULT', /^auth_encryption_key=auth_encryption_key_secret$/)
     end
 
     describe 'default values for certificates files' do
@@ -295,36 +305,25 @@ shared_examples 'expects to create heat conf' do
     describe 'default values' do
       it 'has default conf values' do
         [
-          %r{^sql_connection=mysql://heat:heat@127.0.0.1:3306/heat\?charset=utf8$},
+          %r{^connection=mysql://heat:heat@127.0.0.1:3306/heat\?charset=utf8$},
           %r{^heat_metadata_server_url=http://127.0.0.1:8000$},
           %r{^heat_waitcondition_server_url=http://127.0.0.1:8000/v1/waitcondition$},
           %r{^heat_watch_server_url=http://127.0.0.1:8003$},
           %r{^signing_dir=/var/cache/heat$},
           /^debug=False$/,
           /^verbose=False$/,
+          %r{^log_dir=/var/log/heat$},
           /^notification_driver = heat.openstack.common.notifier.rpc_notifier$/,
           /^default_notification_level = INFO$/,
           /^default_publisher_id = $/,
           /^list_notifier_drivers = heat.openstack.common.notifier.no_op_notifier$/,
           /^notification_topics = notifications$/,
           /^rpc_thread_pool_size=64$/,
-          /^rpc_conn_pool_size=30$/,
           /^rpc_response_timeout=60$/,
-          /^amqp_durable_queues=false$/,
-          /^amqp_auto_delete=false$/,
-          /^rabbit_host=127.0.0.1$/,
-          /^rabbit_port=5672$/,
-          /^rabbit_ha_queues=False$/,
-          /^rabbit_use_ssl=false$/,
-          /^rabbit_userid=guest$/,
-          /^rabbit_password=mq-pass$/,
-          /^rabbit_virtual_host=\/$/,
           /^bind_host=127.0.0.1$/,
           /^bind_port=8004$/,
-          /^auth_host=127.0.0.1$/,
-          /^auth_port=35357$/,
-          /^auth_protocol=http$/,
           %r{^auth_uri=http://127.0.0.1:5000/v2.0$},
+          %r{^identity_uri=http://127.0.0.1:35357/$},
           /^auth_version=v2.0$/,
           /^hash_algorithms=md5$/,
           /^insecure=false$/,
@@ -333,7 +332,6 @@ shared_examples 'expects to create heat conf' do
           /^admin_tenant_name=service$/,
           /^deferred_auth_method=trusts$/,
           /^stack_scheduler_hints=false$/,
-          %r{^signing_dir=/var/cache/heat$},
           /^region_name_for_services=RegionOne$/
         ].each do |line|
           expect(chef_run).to render_file(file.name).with_content(line)
@@ -384,6 +382,9 @@ shared_examples 'expects to create heat conf' do
         node.set['openstack']['mq']['orchestration']['service_type'] = 'qpid'
 
         [
+          /^rpc_conn_pool_size=30$/,
+          /^amqp_durable_queues=false$/,
+          /^amqp_auto_delete=false$/,
           /^qpid_hostname=127.0.0.1$/,
           /^qpid_port=5672$/,
           /^qpid_username=guest$/,
@@ -399,21 +400,91 @@ shared_examples 'expects to create heat conf' do
           /^qpid_reconnect_interval=0$/,
           /^qpid_topology_version=1$/
         ].each do |line|
-          expect(chef_run).to render_file(file.name).with_content(line)
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_qpid', line)
         end
+        expect(chef_run).to render_config_file(file.name).with_section_content('DEFAULT', /^rpc_backend=heat.openstack.common.rpc.impl_qpid$/)
+      end
+    end
+
+    describe 'has ec2authtoken values' do
+      it 'has default ec2authtoken values' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('ec2authtoken', %r{^auth_uri=http://127.0.0.1:5000/v2.0$})
       end
     end
 
     describe 'has rabbit values' do
-      it 'has rabbit ha values' do
+      before do
         node.set['openstack']['mq']['orchestration']['service_type'] = 'rabbitmq'
+      end
+
+      it 'has default rabbit values' do
+        [/^rpc_conn_pool_size=30$/,
+         /^amqp_durable_queues=false$/,
+         /^amqp_auto_delete=false$/,
+         /^heartbeat_timeout_threshold=0$/,
+         /^heartbeat_rate=2$/
+        ].each do |line|
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
+      end
+
+      it 'does not have rabbit ha values' do
+        [
+          /^rabbit_host=127.0.0.1$/,
+          /^rabbit_port=5672$/,
+          /^rabbit_ha_queues=False$/
+        ].each do |line|
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
+      end
+
+      it 'has rabbit ha values' do
         node.set['openstack']['mq']['orchestration']['rabbit']['ha'] = true
         [
           /^rabbit_hosts=1.1.1.1:5672,2.2.2.2:5672$/,
           /^rabbit_ha_queues=True$/
         ].each do |line|
-          expect(chef_run).to render_file(file.name).with_content(line)
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
         end
+      end
+
+      it 'does not have ssl config set' do
+        [/^rabbit_use_ssl=/,
+         /^kombu_ssl_version=/,
+         /^kombu_ssl_keyfile=/,
+         /^kombu_ssl_certfile=/,
+         /^kombu_ssl_ca_certs=/,
+         /^kombu_reconnect_delay=/,
+         /^kombu_reconnect_timeout=/].each do |line|
+          expect(chef_run).not_to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
+      end
+
+      it 'sets ssl config' do
+        node.set['openstack']['mq']['orchestration']['rabbit']['use_ssl'] = true
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_version'] = 'TLSv1.2'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_keyfile'] = 'keyfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_certfile'] = 'certfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_ssl_ca_certs'] = 'certsfile'
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_reconnect_delay'] = 123.123
+        node.set['openstack']['mq']['orchestration']['rabbit']['kombu_reconnect_timeout'] = 123
+        [/^rabbit_use_ssl=true/,
+         /^kombu_ssl_version=TLSv1.2$/,
+         /^kombu_ssl_keyfile=keyfile$/,
+         /^kombu_ssl_certfile=certfile$/,
+         /^kombu_ssl_ca_certs=certsfile$/,
+         /^kombu_reconnect_delay=123.123$/,
+         /^kombu_reconnect_timeout=123$/].each do |line|
+          expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', line)
+        end
+      end
+
+      it 'has the default rabbit_retry_interval set' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^rabbit_retry_interval=1$/)
+      end
+
+      it 'has the default rabbit_max_retries set' do
+        expect(chef_run).to render_config_file(file.name).with_section_content('oslo_messaging_rabbit', /^rabbit_max_retries=0$/)
       end
     end
   end

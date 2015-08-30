@@ -26,7 +26,7 @@ end
 
 identity_admin_endpoint = admin_endpoint 'identity-admin'
 
-token = get_secret 'openstack_identity_bootstrap_token'
+token = get_password 'token', 'openstack_identity_bootstrap_token'
 auth_url = ::URI.decode identity_admin_endpoint.to_s
 
 admin_heat_endpoint = admin_endpoint 'orchestration-api'
@@ -123,7 +123,7 @@ openstack_identity_register 'Register Heat Service User' do
   action :create_user
 end
 
-## Grant Admin role to Service User for Service Tenant ##
+## Grant Service role to Service User for Service Tenant ##
 openstack_identity_register "Grant '#{service_role}' Role to #{service_user} User for #{service_tenant_name} Tenant" do
   auth_uri auth_url
   bootstrap_token token

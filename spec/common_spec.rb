@@ -3,7 +3,7 @@ require_relative 'spec_helper'
 
 describe 'openstack-orchestration::common' do
   describe 'ubuntu' do
-    let(:runner) { ChefSpec::Runner.new(UBUNTU_OPTS) }
+    let(:runner) { ChefSpec::SoloRunner.new(UBUNTU_OPTS) }
     let(:node) { runner.node }
     let(:chef_run) { runner.converge(described_recipe) }
 
@@ -39,7 +39,6 @@ describe 'openstack-orchestration::common' do
         node.set['openstack']['orchestration']['misc_heat'] = ['MISC_OPTION=FOO']
         expect(chef_run).to render_file(file.name).with_content('MISC_OPTION=FOO')
       end
-
     end
   end
 end
